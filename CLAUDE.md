@@ -7,4 +7,4 @@
 3. follow the plan doc when implementing.
 
 Ask the user if something is vague or ambiguous. Make everything clear and planned before starting implementation.
-When you make changes, commit changes to git.
+Commit changes to git. Each commit should be a minimal coherent idea.
