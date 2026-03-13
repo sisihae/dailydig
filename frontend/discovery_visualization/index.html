@@ -1,337 +1,406 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DailyDig — Discovery Path</title>
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0d1117;
-      color: #c9d1d9;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-    header {
-      padding: 16px 24px;
-      background: #161b22;
-      border-bottom: 1px solid #30363d;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    header h1 { font-size: 18px; font-weight: 600; }
-    .controls {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    input[type="number"] {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      color: #c9d1d9;
-      padding: 6px 12px;
-      border-radius: 6px;
-      width: 100px;
-      font-size: 14px;
-    }
-    button {
-      background: #238636;
-      color: #fff;
-      border: none;
-      padding: 6px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    button:hover { background: #2ea043; }
-    #status {
-      font-size: 13px;
-      color: #8b949e;
-      margin-left: 12px;
-    }
-    #graph-container {
-      flex: 1;
-      position: relative;
-      overflow: hidden;
-    }
-    svg { width: 100%; height: 100%; }
-    .tooltip {
-      position: absolute;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 13px;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.15s;
-      max-width: 250px;
-    }
-    .tooltip .label { font-weight: 600; color: #f0f6fc; }
-    .tooltip .type { color: #8b949e; font-size: 12px; }
-    .legend {
-      position: absolute;
-      bottom: 16px;
-      left: 16px;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      padding: 12px 16px;
-      font-size: 13px;
-    }
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 4px;
-    }
-    .legend-item:last-child { margin-bottom: 0; }
-    .legend-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
-    .track-info {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      padding: 16px;
-      font-size: 13px;
-      max-width: 300px;
-      display: none;
-    }
-    .track-info h3 { font-size: 15px; margin-bottom: 8px; color: #f0f6fc; }
-    .track-info .meta { color: #8b949e; margin-bottom: 4px; }
-    .link-label {
-      font-size: 11px;
-      fill: #484f58;
-      pointer-events: none;
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>🎵 DailyDig Discovery Path</h1>
-    <div class="controls">
-      <input type="number" id="track-id-input" placeholder="Track ID" min="1" />
-      <button onclick="loadGraph()">Load</button>
-      <span id="status"></span>
-    </div>
-  </header>
-
-  <div id="graph-container">
-    <div class="tooltip" id="tooltip"></div>
-    <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Track</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Artist</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Genre</div>
-    </div>
-    <div class="track-info" id="track-info"></div>
-  </div>
-
-  <script>
-    const API_BASE = window.location.origin;
-    const COLORS = { track: "#58a6ff", artist: "#f0883e", genre: "#3fb950" };
-    const RADIUS = { track: 20, artist: 16, genre: 12 };
-
-    let simulation = null;
-
-    function getTrackIdFromUrl() {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("track_id");
-    }
-
-    window.addEventListener("DOMContentLoaded", () => {
-      const urlTrackId = getTrackIdFromUrl();
-      if (urlTrackId) {
-        document.getElementById("track-id-input").value = urlTrackId;
-        loadGraph();
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DailyDig — Discovery Path</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
-    });
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #0d1117;
+        color: #c9d1d9;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      header {
+        padding: 16px 24px;
+        background: #161b22;
+        border-bottom: 1px solid #30363d;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      header h1 {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      input[type="number"] {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        color: #c9d1d9;
+        padding: 6px 12px;
+        border-radius: 6px;
+        width: 100px;
+        font-size: 14px;
+      }
+      button {
+        background: #238636;
+        color: #fff;
+        border: none;
+        padding: 6px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      button:hover {
+        background: #2ea043;
+      }
+      #status {
+        font-size: 13px;
+        color: #8b949e;
+        margin-left: 12px;
+      }
+      #graph-container {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
+      svg {
+        width: 100%;
+        height: 100%;
+      }
+      .tooltip {
+        position: absolute;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 13px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s;
+        max-width: 250px;
+      }
+      .tooltip .label {
+        font-weight: 600;
+        color: #f0f6fc;
+      }
+      .tooltip .type {
+        color: #8b949e;
+        font-size: 12px;
+      }
+      .legend {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px 16px;
+        font-size: 13px;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .legend-item:last-child {
+        margin-bottom: 0;
+      }
+      .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+      .track-info {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 16px;
+        font-size: 13px;
+        max-width: 300px;
+        display: none;
+      }
+      .track-info h3 {
+        font-size: 15px;
+        margin-bottom: 8px;
+        color: #f0f6fc;
+      }
+      .track-info .meta {
+        color: #8b949e;
+        margin-bottom: 4px;
+      }
+      .link-label {
+        font-size: 11px;
+        fill: #484f58;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🎵 DailyDig Discovery Path</h1>
+      <div class="controls">
+        <input
+          type="number"
+          id="track-id-input"
+          placeholder="Track ID"
+          min="1"
+        />
+        <button onclick="loadGraph()">Load</button>
+        <span id="status"></span>
+      </div>
+    </header>
 
-    async function loadGraph() {
-      const trackId = document.getElementById("track-id-input").value;
-      const status = document.getElementById("status");
-      if (!trackId) {
-        status.textContent = "Enter a track ID";
-        return;
+    <div id="graph-container">
+      <div class="tooltip" id="tooltip"></div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #58a6ff"></div>
+          Track
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #f0883e"></div>
+          Artist
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #3fb950"></div>
+          Genre
+        </div>
+      </div>
+      <div class="track-info" id="track-info"></div>
+    </div>
+
+    <script>
+      const API_BASE = window.location.origin;
+      const COLORS = { track: "#58a6ff", artist: "#f0883e", genre: "#3fb950" };
+      const RADIUS = { track: 20, artist: 16, genre: 12 };
+
+      let simulation = null;
+
+      function getTrackIdFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("track_id");
       }
 
-      status.textContent = "Loading…";
+      window.addEventListener("DOMContentLoaded", () => {
+        const urlTrackId = getTrackIdFromUrl();
+        if (urlTrackId) {
+          document.getElementById("track-id-input").value = urlTrackId;
+          loadGraph();
+        }
+      });
 
-      try {
-        const resp = await fetch(`${API_BASE}/discovery-path/${encodeURIComponent(trackId)}`);
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          status.textContent = err.detail || `Error ${resp.status}`;
+      async function loadGraph() {
+        const trackId = document.getElementById("track-id-input").value;
+        const status = document.getElementById("status");
+        if (!trackId) {
+          status.textContent = "Enter a track ID";
           return;
         }
-        const data = await resp.json();
-        status.textContent = "";
-        renderTrackInfo(data);
-        renderGraph(data.graph);
-      } catch (e) {
-        status.textContent = `Failed: ${e.message}`;
-      }
-    }
 
-    function renderTrackInfo(data) {
-      const el = document.getElementById("track-info");
-      const t = data.track;
-      const r = data.recommendation;
+        status.textContent = "Loading…";
 
-      let html = `<h3>${escapeHtml(t.name)}</h3>`;
-      html += `<div class="meta">${escapeHtml(t.artist)}</div>`;
-      if (t.album) html += `<div class="meta">${escapeHtml(t.album)}</div>`;
-      if (t.genre) html += `<div class="meta">Genre: ${escapeHtml(t.genre)}</div>`;
-
-      if (r) {
-        html += `<hr style="border-color:#30363d;margin:8px 0"/>`;
-        html += `<div class="meta">Source: ${escapeHtml(r.source)}</div>`;
-        if (r.score != null) html += `<div class="meta">Score: ${r.score.toFixed(2)}</div>`;
+        try {
+          const resp = await fetch(
+            `${API_BASE}/discovery-path/${encodeURIComponent(trackId)}`,
+          );
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            status.textContent = err.detail || `Error ${resp.status}`;
+            return;
+          }
+          const data = await resp.json();
+          status.textContent = "";
+          renderTrackInfo(data);
+          renderGraph(data.graph);
+        } catch (e) {
+          status.textContent = `Failed: ${e.message}`;
+        }
       }
 
-      el.innerHTML = html;
-      el.style.display = "block";
-    }
+      function renderTrackInfo(data) {
+        const el = document.getElementById("track-info");
+        const t = data.track;
+        const r = data.recommendation;
 
-    function renderGraph(graphData) {
-      const container = document.getElementById("graph-container");
-      d3.select(container).selectAll("svg").remove();
+        let html = `<h3>${escapeHtml(t.name)}</h3>`;
+        html += `<div class="meta">${escapeHtml(t.artist)}</div>`;
+        if (t.album) html += `<div class="meta">${escapeHtml(t.album)}</div>`;
+        if (t.genre)
+          html += `<div class="meta">Genre: ${escapeHtml(t.genre)}</div>`;
 
-      if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
-        document.getElementById("status").textContent = "No graph data available";
-        return;
+        if (r) {
+          html += `<hr style="border-color:#30363d;margin:8px 0"/>`;
+          html += `<div class="meta">Source: ${escapeHtml(r.source)}</div>`;
+          if (r.score != null)
+            html += `<div class="meta">Score: ${r.score.toFixed(2)}</div>`;
+        }
+
+        el.innerHTML = html;
+        el.style.display = "block";
       }
 
-      const width = container.clientWidth;
-      const height = container.clientHeight;
+      function renderGraph(graphData) {
+        const container = document.getElementById("graph-container");
+        d3.select(container).selectAll("svg").remove();
 
-      // Deduplicate nodes by id
-      const nodeMap = new Map();
-      graphData.nodes.forEach(n => { if (!nodeMap.has(n.id)) nodeMap.set(n.id, n); });
-      const nodes = Array.from(nodeMap.values());
-      const edges = graphData.edges.filter(e =>
-        nodeMap.has(e.source) && nodeMap.has(e.target)
-      );
+        if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+          document.getElementById("status").textContent =
+            "No graph data available";
+          return;
+        }
 
-      const svg = d3.select(container)
-        .append("svg")
-        .attr("viewBox", [0, 0, width, height]);
+        const width = container.clientWidth;
+        const height = container.clientHeight;
 
-      const g = svg.append("g");
-
-      // Zoom
-      svg.call(d3.zoom()
-        .scaleExtent([0.3, 5])
-        .on("zoom", (event) => g.attr("transform", event.transform))
-      );
-
-      // Force simulation
-      if (simulation) simulation.stop();
-      simulation = d3.forceSimulation(nodes)
-        .force("link", d3.forceLink(edges).id(d => d.id).distance(100))
-        .force("charge", d3.forceManyBody().strength(-300))
-        .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collision", d3.forceCollide().radius(d => RADIUS[d.type] + 4));
-
-      // Links
-      const link = g.append("g")
-        .selectAll("line")
-        .data(edges)
-        .join("line")
-        .attr("stroke", "#30363d")
-        .attr("stroke-width", 1.5);
-
-      // Link labels
-      const linkLabel = g.append("g")
-        .selectAll("text")
-        .data(edges)
-        .join("text")
-        .attr("class", "link-label")
-        .text(d => d.type.replace(/_/g, " "));
-
-      // Nodes
-      const node = g.append("g")
-        .selectAll("circle")
-        .data(nodes)
-        .join("circle")
-        .attr("r", d => RADIUS[d.type] || 14)
-        .attr("fill", d => COLORS[d.type] || "#8b949e")
-        .attr("stroke", "#0d1117")
-        .attr("stroke-width", 2)
-        .style("cursor", "pointer")
-        .call(drag(simulation));
-
-      // Node labels
-      const label = g.append("g")
-        .selectAll("text")
-        .data(nodes)
-        .join("text")
-        .text(d => d.name || d.id)
-        .attr("font-size", 12)
-        .attr("fill", "#c9d1d9")
-        .attr("text-anchor", "middle")
-        .attr("dy", d => -(RADIUS[d.type] + 6))
-        .style("pointer-events", "none");
-
-      // Tooltip
-      const tooltip = d3.select("#tooltip");
-      node.on("mouseover", (event, d) => {
-        tooltip
-          .style("opacity", 1)
-          .html(`<div class="label">${escapeHtml(d.name || d.id)}</div><div class="type">${d.type}</div>`)
-          .style("left", (event.offsetX + 12) + "px")
-          .style("top", (event.offsetY - 10) + "px");
-      })
-      .on("mouseout", () => tooltip.style("opacity", 0));
-
-      simulation.on("tick", () => {
-        link
-          .attr("x1", d => d.source.x)
-          .attr("y1", d => d.source.y)
-          .attr("x2", d => d.target.x)
-          .attr("y2", d => d.target.y);
-        linkLabel
-          .attr("x", d => (d.source.x + d.target.x) / 2)
-          .attr("y", d => (d.source.y + d.target.y) / 2);
-        node
-          .attr("cx", d => d.x)
-          .attr("cy", d => d.y);
-        label
-          .attr("x", d => d.x)
-          .attr("y", d => d.y);
-      });
-    }
-
-    function drag(simulation) {
-      return d3.drag()
-        .on("start", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart();
-          d.fx = d.x; d.fy = d.y;
-        })
-        .on("drag", (event, d) => {
-          d.fx = event.x; d.fy = event.y;
-        })
-        .on("end", (event, d) => {
-          if (!event.active) simulation.alphaTarget(0);
-          d.fx = null; d.fy = null;
+        // Deduplicate nodes by id
+        const nodeMap = new Map();
+        graphData.nodes.forEach((n) => {
+          if (!nodeMap.has(n.id)) nodeMap.set(n.id, n);
         });
-    }
+        const nodes = Array.from(nodeMap.values());
+        const edges = graphData.edges.filter(
+          (e) => nodeMap.has(e.source) && nodeMap.has(e.target),
+        );
 
-    function escapeHtml(text) {
-      if (!text) return "";
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-    }
-  </script>
-</body>
+        const svg = d3
+          .select(container)
+          .append("svg")
+          .attr("viewBox", [0, 0, width, height]);
+
+        const g = svg.append("g");
+
+        // Zoom
+        svg.call(
+          d3
+            .zoom()
+            .scaleExtent([0.3, 5])
+            .on("zoom", (event) => g.attr("transform", event.transform)),
+        );
+
+        // Force simulation
+        if (simulation) simulation.stop();
+        simulation = d3
+          .forceSimulation(nodes)
+          .force(
+            "link",
+            d3
+              .forceLink(edges)
+              .id((d) => d.id)
+              .distance(100),
+          )
+          .force("charge", d3.forceManyBody().strength(-300))
+          .force("center", d3.forceCenter(width / 2, height / 2))
+          .force(
+            "collision",
+            d3.forceCollide().radius((d) => RADIUS[d.type] + 4),
+          );
+
+        // Links
+        const link = g
+          .append("g")
+          .selectAll("line")
+          .data(edges)
+          .join("line")
+          .attr("stroke", "#30363d")
+          .attr("stroke-width", 1.5);
+
+        // Link labels
+        const linkLabel = g
+          .append("g")
+          .selectAll("text")
+          .data(edges)
+          .join("text")
+          .attr("class", "link-label")
+          .text((d) => d.type.replace(/_/g, " "));
+
+        // Nodes
+        const node = g
+          .append("g")
+          .selectAll("circle")
+          .data(nodes)
+          .join("circle")
+          .attr("r", (d) => RADIUS[d.type] || 14)
+          .attr("fill", (d) => COLORS[d.type] || "#8b949e")
+          .attr("stroke", "#0d1117")
+          .attr("stroke-width", 2)
+          .style("cursor", "pointer")
+          .call(drag(simulation));
+
+        // Node labels
+        const label = g
+          .append("g")
+          .selectAll("text")
+          .data(nodes)
+          .join("text")
+          .text((d) => d.name || d.id)
+          .attr("font-size", 12)
+          .attr("fill", "#c9d1d9")
+          .attr("text-anchor", "middle")
+          .attr("dy", (d) => -(RADIUS[d.type] + 6))
+          .style("pointer-events", "none");
+
+        // Tooltip
+        const tooltip = d3.select("#tooltip");
+        node
+          .on("mouseover", (event, d) => {
+            tooltip
+              .style("opacity", 1)
+              .html(
+                `<div class="label">${escapeHtml(d.name || d.id)}</div><div class="type">${d.type}</div>`,
+              )
+              .style("left", event.offsetX + 12 + "px")
+              .style("top", event.offsetY - 10 + "px");
+          })
+          .on("mouseout", () => tooltip.style("opacity", 0));
+
+        simulation.on("tick", () => {
+          link
+            .attr("x1", (d) => d.source.x)
+            .attr("y1", (d) => d.source.y)
+            .attr("x2", (d) => d.target.x)
+            .attr("y2", (d) => d.target.y);
+          linkLabel
+            .attr("x", (d) => (d.source.x + d.target.x) / 2)
+            .attr("y", (d) => (d.source.y + d.target.y) / 2);
+          node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+          label.attr("x", (d) => d.x).attr("y", (d) => d.y);
+        });
+      }
+
+      function drag(simulation) {
+        return d3
+          .drag()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x;
+            d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+          });
+      }
+
+      function escapeHtml(text) {
+        if (!text) return "";
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+    </script>
+  </body>
 </html>

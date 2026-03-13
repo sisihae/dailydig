@@ -7,19 +7,19 @@ tracks, artists, genres, and their relationships.
 
 ### Graph Nodes
 
-| Label    | Key Properties                           |
-| -------- | ---------------------------------------- |
-| `Track`  | `spotify_id`, `name`, `energy`, `valence`|
-| `Artist` | `name`                                   |
-| `Genre`  | `name`                                   |
+| Label    | Key Properties                            |
+| -------- | ----------------------------------------- |
+| `Track`  | `spotify_id`, `name`, `energy`, `valence` |
+| `Artist` | `name`                                    |
+| `Genre`  | `name`                                    |
 
 ### Edges
 
-| Relationship     | From     | To       | Meaning                       |
-| ---------------- | -------- | -------- | ----------------------------- |
-| `PERFORMED_BY`   | Track    | Artist   | Track performed by artist     |
-| `PLAYS`          | Artist   | Genre    | Artist associated with genre  |
-| `INFLUENCED_BY`  | Artist   | Artist   | Artist influence relationship |
+| Relationship    | From   | To     | Meaning                       |
+| --------------- | ------ | ------ | ----------------------------- |
+| `PERFORMED_BY`  | Track  | Artist | Track performed by artist     |
+| `PLAYS`         | Artist | Genre  | Artist associated with genre  |
+| `INFLUENCED_BY` | Artist | Artist | Artist influence relationship |
 
 Example:
 

@@ -25,26 +25,26 @@ neo4j = ">=5.0"
 Append to `services:`:
 
 ```yaml
-  neo4j:
-    image: neo4j:5-community
-    environment:
-      NEO4J_AUTH: neo4j/password
-    ports:
-      - "7474:7474"   # browser
-      - "7687:7687"   # bolt
-    volumes:
-      - neo4jdata:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+neo4j:
+  image: neo4j:5-community
+  environment:
+    NEO4J_AUTH: neo4j/password
+  ports:
+    - "7474:7474" # browser
+    - "7687:7687" # bolt
+  volumes:
+    - neo4jdata:/data
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
 ```
 
 Append to `volumes:`:
 
 ```yaml
-  neo4jdata:
+neo4jdata:
 ```
 
 Make `app` depend on `neo4j` (soft — app still starts if neo4j is down).
