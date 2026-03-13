@@ -6,6 +6,7 @@ import backend.models  # noqa: F401 — register models with Base.metadata
 from backend.database.db import init_db
 from backend.routes.auth import router as auth_router
 from backend.routes.playlist import router as playlist_router
+from backend.routes.recommendation import router as recommendation_router
 
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(playlist_router)
+app.include_router(recommendation_router)
 
 
 @app.get("/health")
