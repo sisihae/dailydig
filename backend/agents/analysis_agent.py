@@ -1,29 +1,6 @@
-# Plan 12 — Music Analysis Agent
-
-**Phase**: 3 – Queue Delivery + Analysis Agent  
-**Creates**: `backend/agents/analysis_agent.py`  
-**Depends on**: 03 (config with Anthropic key), 05 (Track model)
-
----
-
-## Goal
-
-Generate human-readable track descriptions using Claude LLM, with a template fallback.
-
-## Steps
-
-### 1. Create `backend/agents/__init__.py`
-
-Empty file.
-
-### 2. Create `backend/agents/analysis_agent.py`
-
-```python
 import anthropic
 
 from backend.config import settings
-
-# NOTE: Uses AsyncAnthropic to avoid blocking the event loop.
 
 QUEUE_MODE_PROMPT = """You are a music discovery assistant helping someone explore unfamiliar music.
 Write a concise, intriguing description (2–4 sentences) of this track that makes
@@ -52,15 +29,14 @@ Recommended track:
 
 Write in a warm, music-enthusiast tone."""
 
-
 FALLBACK_TEMPLATE = (
-    "🎶 {artist} — \"{track_name}\" from the album {album}. "
+    '🎶 {artist} — "{track_name}" from the album {album}. '
     "Genre: {genre}. A track worth exploring today."
 )
 
 
 class AnalysisAgent:
-    def __init__(self):
+    def __init__(self) -> None:
         self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async def generate_explanation(
@@ -72,11 +48,6 @@ class AnalysisAgent:
         """
         Generate a track explanation via Claude.
         Falls back to template if Claude API fails.
-
-        Args:
-            track: dict with keys: artist, track_name, genre, energy, valence, tempo, album
-            taste_profile_summary: stringified taste profile (auto-discovery mode only)
-            queue_mode: True for queue delivery, False for auto-discovery
         """
         if queue_mode:
             prompt = QUEUE_MODE_PROMPT.format(
@@ -106,36 +77,9 @@ class AnalysisAgent:
             )
             return message.content[0].text
         except Exception:
-            # Fallback to template
             return FALLBACK_TEMPLATE.format(
                 artist=track["artist"],
                 track_name=track["track_name"],
                 album=track.get("album", "Unknown"),
                 genre=track.get("genre", "Unknown"),
             )
-```
-
-## Key Decisions
-
-- Two prompt templates: queue mode (no taste context) vs auto-discovery (with taste).
-- `claude-sonnet-4-20250514` for cost efficiency; easy to swap model.
-- Template fallback on any Claude failure (per error-handling spec).
-- Uses AsyncAnthropic to avoid blocking the event loop.
-
-## Verification
-
-```python
-agent = AnalysisAgent()
-explanation = await agent.generate_explanation({
-    "artist": "Hiatus Kaiyote",
-    "track_name": "Nakamarra",
-    "genre": "neo soul",
-    "energy": 0.65, "valence": 0.72, "tempo": 110.0,
-    "album": "Tawk Tomahawk"
-})
-print(explanation)
-```
-
-## Output
-
-- `backend/agents/analysis_agent.py` — Claude-powered explanation generator with fallback

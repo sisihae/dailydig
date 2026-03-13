@@ -61,7 +61,7 @@ class NotificationService:
         message = await self.bot.send_message(
             chat_id=self.chat_id,
             text=text,
-            parse_mode="Markdown",
+            parse_mode="MarkdownV2",
             reply_markup=keyboard,
         )
         return message.message_id
@@ -160,7 +160,7 @@ class DeliveryAgent:
 
 ## Key Decisions
 
-- Telegram message uses Markdown formatting with escaped special chars.
+- Telegram message uses MarkdownV2 formatting with escaped special chars.
 - Callback data format: `{feedback_type}:{track_id}` — parsed by Feedback Agent.
 - If Telegram send fails, recommendation still stored as "undelivered" (retrievable via API).
 - Auto-discovery notice is a separate plain-text message.
