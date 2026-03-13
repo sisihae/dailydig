@@ -14,6 +14,7 @@ from backend.routes.evaluation import router as evaluation_router
 from backend.routes.discovery_path import router as discovery_path_router
 from backend.scheduler.daily_job import create_scheduler
 from backend.services.telegram_handler import create_telegram_app
+from backend.services.knowledge_graph_service import KnowledgeGraphService
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,15 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
+
+    # Knowledge graph (optional — degrades gracefully)
+    try:
+        kg_service = KnowledgeGraphService()
+        app.state.kg_service = kg_service
+        logger.info("Knowledge graph service connected")
+    except Exception:
+        logger.warning("Neo4j unavailable — knowledge graph disabled")
+        app.state.kg_service = None
 
     # Start Telegram polling for inline button callbacks
     telegram_app = create_telegram_app()
@@ -40,6 +50,10 @@ async def lifespan(app: FastAPI):
     # Shutdown
     scheduler.shutdown()
     logger.info("Scheduler stopped")
+
+    if app.state.kg_service:
+        await app.state.kg_service.close()
+        logger.info("Knowledge graph service closed")
 
     await telegram_app.updater.stop()
     await telegram_app.stop()

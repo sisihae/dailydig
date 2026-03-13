@@ -1,18 +1,28 @@
 # Plan 27 — Knowledge Graph & Visualization (Post-MVP)
 
 **Phase**: 9 – Knowledge Graph & Visualization  
-**Creates**: `backend/services/knowledge_graph_service.py`, Neo4j docker service, frontend stubs  
+**Creates**: `backend/services/knowledge_graph_service.py`, Neo4j docker service, frontend  
 **Depends on**: All MVP phases complete
 
 ---
 
 ## Goal
 
-Add Neo4j-based knowledge graph for deeper music exploration and D3.js discovery path visualization. **Post-MVP** — implement only after all MVP phases are stable.
+Add Neo4j-based knowledge graph for deeper music exploration and D3.js discovery
+path visualization. Neo4j is **optional** — all existing flows degrade gracefully
+when it's unavailable.
 
 ## Steps
 
-### 1. Add Neo4j to `docker-compose.yml`
+### 1. Add `neo4j` Python driver to `pyproject.toml`
+
+```toml
+neo4j = ">=5.0"
+```
+
+### 2. Add Neo4j to `docker-compose.yml`
+
+Append to `services:`:
 
 ```yaml
   neo4j:
@@ -20,16 +30,36 @@ Add Neo4j-based knowledge graph for deeper music exploration and D3.js discovery
     environment:
       NEO4J_AUTH: neo4j/password
     ports:
-      - "7474:7474"  # browser
-      - "7687:7687"  # bolt
+      - "7474:7474"   # browser
+      - "7687:7687"   # bolt
     volumes:
       - neo4jdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
 
-volumes:
+Append to `volumes:`:
+
+```yaml
   neo4jdata:
 ```
 
-### 2. Add config variables
+Make `app` depend on `neo4j` (soft — app still starts if neo4j is down).
+
+### 3. Add config variables
+
+In `backend/config.py`:
+
+```python
+neo4j_uri: str = "bolt://localhost:7687"
+neo4j_user: str = "neo4j"
+neo4j_password: str = "password"
+```
+
+In `.env.example`:
 
 ```env
 NEO4J_URI=bolt://localhost:7687
@@ -37,138 +67,132 @@ NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
 ```
 
-### 3. Create `backend/services/knowledge_graph_service.py`
+### 4. Create `backend/services/knowledge_graph_service.py`
+
+Singleton service with:
+
+- `__init__` — create async driver.
+- `close()` — close driver.
+- `add_track(track: dict)` — MERGE Track, Artist, Genre nodes + edges.
+- `add_influence_edge(artist_from, artist_to)` — MERGE INFLUENCED_BY edge.
+- `get_discovery_path(track_spotify_id)` — return {nodes, edges} for D3.js.
+- `get_related_artists(artist_name)` — return list of related artist names
+  (via genre co-occurrence and influence edges) for Discovery Agent seeding.
+
+All public methods catch exceptions and log warnings (never raise to callers).
+This ensures Neo4j failures never break the main pipeline.
+
+### 5. Wire KG service lifecycle in `backend/app.py`
+
+In `lifespan`:
 
 ```python
-from neo4j import AsyncGraphDatabase
-from backend.config import settings
+# Startup — try to connect, set app.state.kg_service (None if unavailable)
+try:
+    kg_service = KnowledgeGraphService()
+    app.state.kg_service = kg_service
+except Exception:
+    logger.warning("Neo4j unavailable — knowledge graph disabled")
+    app.state.kg_service = None
 
-
-class KnowledgeGraphService:
-    def __init__(self):
-        self.driver = AsyncGraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(settings.neo4j_user, settings.neo4j_password),
-        )
-
-    async def close(self):
-        await self.driver.close()
-
-    async def add_track(self, track: dict) -> None:
-        """Add Track node + edges to Artist and Genre."""
-        async with self.driver.session() as session:
-            await session.run(
-                """
-                MERGE (t:Track {spotify_id: $spotify_id})
-                SET t.name = $name, t.energy = $energy, t.valence = $valence
-
-                MERGE (a:Artist {name: $artist})
-                MERGE (t)-[:PERFORMED_BY]->(a)
-
-                FOREACH (g IN CASE WHEN $genre IS NOT NULL THEN [$genre] ELSE [] END |
-                    MERGE (genre:Genre {name: g})
-                    MERGE (a)-[:PLAYS]->(genre)
-                )
-                """,
-                spotify_id=track["spotify_id"],
-                name=track["name"],
-                artist=track["artist"],
-                genre=track.get("genre"),
-                energy=track.get("energy"),
-                valence=track.get("valence"),
-            )
-
-    async def add_influence_edge(self, artist_from: str, artist_to: str) -> None:
-        """Add INFLUENCED_BY edge between artists."""
-        async with self.driver.session() as session:
-            await session.run(
-                """
-                MERGE (a1:Artist {name: $from})
-                MERGE (a2:Artist {name: $to})
-                MERGE (a1)-[:INFLUENCED_BY]->(a2)
-                """,
-                **{"from": artist_from, "to": artist_to},
-            )
-
-    async def get_discovery_path(self, track_spotify_id: str) -> dict:
-        """
-        Get the graph neighborhood around a track for visualization.
-        Returns nodes + edges in D3.js-compatible format.
-        """
-        async with self.driver.session() as session:
-            result = await session.run(
-                """
-                MATCH (t:Track {spotify_id: $sid})-[:PERFORMED_BY]->(a:Artist)
-                OPTIONAL MATCH (a)-[:PLAYS]->(g:Genre)
-                OPTIONAL MATCH (a)-[:INFLUENCED_BY]->(a2:Artist)
-                RETURN t, a, collect(DISTINCT g) as genres,
-                       collect(DISTINCT a2) as influences
-                """,
-                sid=track_spotify_id,
-            )
-            record = await result.single()
-            if not record:
-                return {"nodes": [], "edges": []}
-
-            nodes = []
-            edges = []
-
-            # Track node
-            track_node = dict(record["t"])
-            nodes.append({"id": track_node["spotify_id"], "type": "track", **track_node})
-
-            # Artist node
-            artist_node = dict(record["a"])
-            artist_id = artist_node["name"]
-            nodes.append({"id": artist_id, "type": "artist", **artist_node})
-            edges.append({"source": track_node["spotify_id"], "target": artist_id, "type": "performed_by"})
-
-            # Genre nodes
-            for g in record["genres"]:
-                if g:
-                    gd = dict(g)
-                    nodes.append({"id": gd["name"], "type": "genre", **gd})
-                    edges.append({"source": artist_id, "target": gd["name"], "type": "plays"})
-
-            # Influence edges
-            for inf in record["influences"]:
-                if inf:
-                    ind = dict(inf)
-                    nodes.append({"id": ind["name"], "type": "artist", **ind})
-                    edges.append({"source": artist_id, "target": ind["name"], "type": "influenced_by"})
-
-            return {"nodes": nodes, "edges": edges}
+# Shutdown
+if app.state.kg_service:
+    await app.state.kg_service.close()
 ```
 
-### 4. Frontend stub (`frontend/discovery_visualization/`)
+### 6. Populate graph after track delivery (workflow)
 
-Create minimal HTML + D3.js to render the graph. This is a thin post-MVP layer:
+In `graph/workflow.py`, add a `populate_graph_node` after `delivery_node`:
 
-- `index.html` — single-page with D3 force-directed graph
-- Fetches from `/discovery-path/{track_id}` API
-- Renders nodes (Track, Artist, Genre) with different colors
-- Renders edges with labels
+```python
+async def populate_graph_node(state: AgentState) -> dict:
+    """Write delivered track to Neo4j (best-effort)."""
+    kg_service = _get_kg_service()  # returns None if unavailable
+    if not kg_service:
+        return {}
+    track = state.get("selected_track")
+    if track:
+        await kg_service.add_track(track)
+    return {}
+```
 
-### 5. Enhance Discovery Agent
+Wire it as `delivery → populate_graph → END` in the graph.
 
-Optionally query the knowledge graph for related artists/genres to expand seed recommendations.
+### 7. Enhance `/discovery-path/{track_id}` API
+
+Merge graph data into the existing endpoint response:
+
+```python
+@router.get("/discovery-path/{track_id}")
+async def get_discovery_path(track_id: int, ...):
+    # ... existing relational query ...
+    graph_data = None
+    if kg_service:
+        graph_data = await kg_service.get_discovery_path(track.spotify_id)
+    return {
+        "track": { ... },
+        "recommendation": { ... },
+        "graph": graph_data,
+    }
+```
+
+### 8. Enhance Discovery Agent
+
+Add optional method `expand_seeds_from_graph`:
+
+```python
+async def fetch_candidates(self, session, strategy, kg_service=None):
+    seed_artists = strategy.get("seed_artists", [])
+    # Expand seeds from graph if available
+    if kg_service and seed_artists:
+        for artist in seed_artists[:3]:
+            related = await kg_service.get_related_artists(artist)
+            seed_artists.extend(related[:2])
+        seed_artists = list(dict.fromkeys(seed_artists))  # dedup, preserve order
+    # ... rest unchanged ...
+```
+
+Pass `kg_service` from `discovery_node` in the workflow.
+
+### 9. Frontend (`frontend/discovery_visualization/`)
+
+Create `index.html` — standalone HTML + D3.js (CDN). No build tools.
+
+- Input: track ID (URL param or text input).
+- Fetch `/discovery-path/{track_id}`.
+- Render force-directed graph with D3.js v7.
+- Node colors: track (blue), artist (orange), genre (green).
+- Edge labels rendered along links.
+- Tooltip on hover showing node properties.
 
 ## Key Decisions
 
 - Neo4j Community Edition (free, sufficient for single-user).
-- Graph populated incrementally as tracks are recommended.
-- D3.js frontend is a minimal HTML page, not a full SPA.
-- Discovery path API already exists (Plan 24); this enhances it with graph data.
+- Graph populated incrementally as tracks are delivered.
+- **Graceful degradation**: all methods catch exceptions, log warnings, return
+  empty results. Neo4j being down never breaks queue/auto-discovery flows.
+- D3.js frontend is a minimal standalone HTML page (no build tools, no SPA).
+- Discovery path API merges relational + graph data; `graph` is `null` when
+  Neo4j is unavailable.
 
 ## Verification
 
-1. Start Neo4j via docker-compose
-2. Recommend a track → check Neo4j browser (`localhost:7474`)
-3. Query `/discovery-path/{track_id}` → JSON with `nodes` + `edges`
-4. Open frontend HTML → see force-directed graph
+1. `docker-compose up` — Neo4j starts, health check passes
+2. Recommend a track → check Neo4j browser (`localhost:7474`) for nodes
+3. `GET /discovery-path/{track_id}` → JSON with relational data + `graph` field
+4. Open `frontend/discovery_visualization/index.html` → see force-directed graph
+5. Stop Neo4j → re-run recommendation → pipeline completes without error
+6. Discovery Agent uses graph seeds when available
 
 ## Output
 
-- Neo4j added to `docker-compose.yml`
-- `backend/services/knowledge_graph_service.py` — graph CRUD + query
-- `frontend/discovery_visualization/` — D3.js visualization stub
+- `neo4j` added to `pyproject.toml`
+- Neo4j added to `docker-compose.yml` with healthcheck
+- `backend/config.py` — three Neo4j settings
+- `backend/services/knowledge_graph_service.py` — graph CRUD + query + graceful degradation
+- `backend/app.py` — KG service lifecycle
+- `backend/graph/workflow.py` — `populate_graph_node` after delivery
+- `backend/routes/discovery_path.py` — merged graph data in response
+- `backend/agents/discovery_agent.py` — optional graph-based seed expansion
+- `frontend/discovery_visualization/index.html` — D3.js visualization
+- `.env.example` — Neo4j vars

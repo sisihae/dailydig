@@ -16,6 +16,15 @@ from backend.agents.delivery_agent import DeliveryAgent
 logger = logging.getLogger(__name__)
 
 
+def _get_kg_service():
+    """Get the knowledge graph service from the FastAPI app state, or None."""
+    try:
+        from backend.app import app
+        return getattr(app.state, "kg_service", None)
+    except Exception:
+        return None
+
+
 # --- Node functions ---
 
 
@@ -90,7 +99,9 @@ async def discovery_node(state: AgentState) -> dict:
 
     async with async_session() as session:
         agent = DiscoveryAgent(SpotifyService())
-        candidates = await agent.fetch_candidates(session, strategy)
+        candidates = await agent.fetch_candidates(
+            session, strategy, kg_service=_get_kg_service()
+        )
 
     if not candidates:
         return {"error": "No candidates found from Spotify"}
@@ -205,6 +216,19 @@ async def delivery_node(state: AgentState) -> dict:
     return {"delivery_status": result["delivery_status"]}
 
 
+async def populate_graph_node(state: AgentState) -> dict:
+    """Write delivered track to Neo4j knowledge graph (best-effort)."""
+    kg_service = _get_kg_service()
+    if not kg_service:
+        return {}
+
+    track = state.get("selected_track")
+    if track:
+        await kg_service.add_track(track)
+
+    return {}
+
+
 # --- Routing ---
 
 
@@ -231,6 +255,7 @@ def build_workflow():
     graph.add_node("ranking", ranking_node)
     graph.add_node("analysis", analysis_node)
     graph.add_node("delivery", delivery_node)
+    graph.add_node("populate_graph", populate_graph_node)
 
     graph.add_edge(START, "check_queue")
 
@@ -245,6 +270,7 @@ def build_workflow():
     graph.add_edge("discovery", "ranking")
     graph.add_edge("ranking", "analysis")
     graph.add_edge("analysis", "delivery")
-    graph.add_edge("delivery", END)
+    graph.add_edge("delivery", "populate_graph")
+    graph.add_edge("populate_graph", END)
 
     return graph.compile()

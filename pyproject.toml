@@ -21,6 +21,7 @@ apscheduler = ">=3.10"
 pydantic-settings = ">=2.0"
 httpx = ">=0.28"
 greenlet = "^3.3.2"
+neo4j = ">=5.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"

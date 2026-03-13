@@ -1,7 +1,17 @@
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import repositories as repo
 from backend.services.spotify_service import SpotifyService
+
+if TYPE_CHECKING:
+    from backend.services.knowledge_graph_service import KnowledgeGraphService
+
+logger = logging.getLogger(__name__)
 
 
 class DiscoveryAgent:
@@ -9,24 +19,31 @@ class DiscoveryAgent:
         self.spotify = spotify_service
 
     async def fetch_candidates(
-        self, session: AsyncSession, strategy: dict
+        self,
+        session: AsyncSession,
+        strategy: dict,
+        kg_service: KnowledgeGraphService | None = None,
     ) -> list[dict]:
         """
         Fetch candidate tracks from Spotify based on planner strategy.
 
         Steps:
-        1. Call Spotify recommendations with seed artists + genres
-        2. Fetch audio features for all candidates
-        3. Filter out already recommended or queued tracks (dedup)
-        4. Return 30-50 enriched candidate dicts
-
-        Args:
-            strategy: PlannerStrategy dict with candidate_genres, seed_artists
-        Returns:
-            list of track dicts with audio features
+        1. Optionally expand seed artists using knowledge graph
+        2. Call Spotify recommendations with seed artists + genres
+        3. Fetch audio features for all candidates
+        4. Filter out already recommended or queued tracks (dedup)
+        5. Return 30-50 enriched candidate dicts
         """
-        seed_artists = strategy.get("seed_artists", [])
+        seed_artists = list(strategy.get("seed_artists", []))
         seed_genres = strategy.get("candidate_genres", [])
+
+        # Expand seeds from knowledge graph if available
+        if kg_service and seed_artists:
+            for artist in seed_artists[:3]:
+                related = await kg_service.get_related_artists(artist)
+                seed_artists.extend(related[:2])
+            seed_artists = list(dict.fromkeys(seed_artists))  # dedup, preserve order
+            logger.info("Expanded seed artists via knowledge graph: %s", seed_artists)
 
         # Fetch recommendations from Spotify (cached for 1h)
         raw_tracks = await self.spotify.get_recommendations(

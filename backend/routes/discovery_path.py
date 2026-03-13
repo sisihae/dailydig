@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,10 +12,11 @@ router = APIRouter(tags=["discovery"])
 @router.get("/discovery-path/{track_id}")
 async def get_discovery_path(
     track_id: int,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Get track metadata + score breakdown for a recommended track.
+    Get track metadata + score breakdown + knowledge graph neighborhood.
     Shows how and why this track was recommended.
     """
     track = await repo.get_track_by_id(session, track_id)
@@ -30,6 +31,12 @@ async def get_discovery_path(
         .limit(1)
     )
     rec = result.scalar_one_or_none()
+
+    # Knowledge graph data (None when Neo4j unavailable)
+    graph_data = None
+    kg_service = getattr(request.app.state, "kg_service", None)
+    if kg_service and track.spotify_id:
+        graph_data = await kg_service.get_discovery_path(track.spotify_id)
 
     return {
         "track": {
@@ -50,4 +57,5 @@ async def get_discovery_path(
             "score_breakdown": rec.score_breakdown,
             "recommended_at": rec.recommended_at.isoformat(),
         } if rec else None,
+        "graph": graph_data,
     }
