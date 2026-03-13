@@ -6,6 +6,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.config import settings
+from backend.database.db import async_session
+from backend.evaluation.metrics import MetricsCalculator
 from backend.graph.workflow import build_workflow
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,16 @@ async def run_daily_recommendation() -> None:
                 f"status={result.get('delivery_status')}, "
                 f"mode={'queue' if result.get('queue_mode') else 'auto-discovery'}"
             )
+
+        # Save daily metrics snapshot
+        try:
+            async with async_session() as session:
+                calculator = MetricsCalculator()
+                await calculator.save_daily_snapshot(session)
+                await session.commit()
+            logger.info("Daily metrics snapshot saved")
+        except Exception:
+            logger.exception("Failed to save daily metrics snapshot")
 
     except Exception:
         logger.exception("Daily recommendation failed")

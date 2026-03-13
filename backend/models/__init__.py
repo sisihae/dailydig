@@ -3,5 +3,13 @@ from backend.models.dig_queue import DigQueue
 from backend.models.taste_profile import TasteProfile
 from backend.models.feedback import Feedback
 from backend.models.recommendation_history import RecommendationHistory
+from backend.models.evaluation_metrics import EvaluationMetrics
 
-__all__ = ["Track", "DigQueue", "TasteProfile", "Feedback", "RecommendationHistory"]
+__all__ = [
+    "Track",
+    "DigQueue",
+    "TasteProfile",
+    "Feedback",
+    "RecommendationHistory",
+    "EvaluationMetrics",
+]

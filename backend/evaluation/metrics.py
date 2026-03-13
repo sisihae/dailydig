@@ -1,62 +1,3 @@
-# Plan 23 — Evaluation Metrics System
-
-**Phase**: 7 – Evaluation System & Remaining API Endpoints  
-**Creates**: `backend/evaluation/__init__.py`, `backend/evaluation/metrics.py`  
-**Depends on**: 06 (repositories), 05 (Feedback, RecommendationHistory models)
-
----
-
-## Goal
-
-Calculate rolling 30-day engagement and discovery quality metrics, with daily snapshot storage.
-
-## Steps
-
-### 1. Create `backend/evaluation/__init__.py`
-
-Empty file.
-
-### 2. Create evaluation_metrics model
-
-Add to `backend/models/evaluation_metrics.py`:
-
-```python
-from datetime import date
-
-from sqlalchemy import Integer, Float, Date, func
-from sqlalchemy.orm import Mapped, mapped_column
-
-from backend.database.db import Base
-
-
-class EvaluationMetrics(Base):
-    __tablename__ = "evaluation_metrics"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    snapshot_date: Mapped[date] = mapped_column(Date, unique=True)
-
-    # Engagement
-    total_recommendations: Mapped[int] = mapped_column(Integer, default=0)
-    like_rate: Mapped[float] = mapped_column(Float, default=0.0)
-    dislike_rate: Mapped[float] = mapped_column(Float, default=0.0)
-    skip_rate: Mapped[float] = mapped_column(Float, default=0.0)
-
-    # Discovery quality
-    new_artist_rate: Mapped[float] = mapped_column(Float, default=0.0)
-    genre_diversity: Mapped[float] = mapped_column(Float, default=0.0)
-```
-
-Update `backend/models/__init__.py`:
-
-```python
-from backend.models.evaluation_metrics import EvaluationMetrics
-
-__all__ = [..., "EvaluationMetrics"]
-```
-
-### 3. Create `backend/evaluation/metrics.py`
-
-```python
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select, func as sa_func
@@ -119,7 +60,7 @@ class MetricsCalculator:
         recs = list(recs_in_period.scalars().all())
 
         new_artists = 0
-        unique_genres = set()
+        unique_genres: set[str] = set()
 
         for rec in recs:
             track = await session.get(Track, rec.track_id)
@@ -176,33 +117,3 @@ class MetricsCalculator:
             session.add(snapshot)
 
         await session.flush()
-```
-
-### 4. Wire daily snapshot into scheduler
-
-In `backend/scheduler/daily_job.py`, after the workflow runs successfully, save a daily metrics snapshot:
-
-```python
-from backend.evaluation.metrics import MetricsCalculator
-from backend.database.db import async_session
-
-# After successful workflow execution:
-async with async_session() as session:
-    calculator = MetricsCalculator()
-    await calculator.save_daily_snapshot(session)
-    await session.commit()
-```
-
-## Verification
-
-```python
-calc = MetricsCalculator()
-metrics = await calc.calculate_metrics(session, days=30)
-print(metrics)
-# {"total_recommendations": 15, "like_rate": 0.6, ...}
-```
-
-## Output
-
-- `backend/models/evaluation_metrics.py` — EvaluationMetrics model
-- `backend/evaluation/metrics.py` — MetricsCalculator with snapshot storage
