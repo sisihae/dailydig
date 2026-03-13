@@ -21,21 +21,21 @@ DailyDig is an automated music discovery and delivery system that recommends tra
 
 ```mermaid
 flowchart TD
-	Scheduler([Daily Scheduler 09:00 KST]) --> CheckQueue{Queue Empty?}
-	CheckQueue -- No --> PickFromQueue[Pick from Queue]
-	PickFromQueue --> AnalysisA[Music Analysis Agent]
-	AnalysisA --> DeliveryA[Delivery Agent (Telegram)]
-	DeliveryA --> FeedbackA[User Feedback]
-	FeedbackA --> FeedbackAgentA[Feedback Agent]
-	FeedbackAgentA --> TasteModelA[Taste Modeling Agent]
-	CheckQueue -- Yes --> Planner[Planner Agent]
-	Planner --> Discovery[Discovery Agent]
-	Discovery --> Ranking[Ranking Agent]
-	Ranking --> AnalysisB[Music Analysis Agent]
-	AnalysisB --> DeliveryB[Delivery Agent (Telegram)]
-	DeliveryB --> FeedbackB[User Feedback]
-	FeedbackB --> FeedbackAgentB[Feedback Agent]
-	FeedbackAgentB --> TasteModelB[Taste Modeling Agent]
+    Scheduler([Daily Scheduler 09:00 KST]) --> CheckQueue{Queue Empty?}
+    CheckQueue -- No --> PickFromQueue[Pick from Queue]
+    PickFromQueue --> AnalysisA[Music Analysis Agent]
+    AnalysisA --> DeliveryA[Delivery Agent (Telegram)]
+    DeliveryA --> FeedbackA[User Feedback]
+    FeedbackA --> FeedbackAgentA[Feedback Agent]
+    FeedbackAgentA --> TasteModelA[Taste Modeling Agent]
+    CheckQueue -- Yes --> Planner[Planner Agent]
+    Planner --> Discovery[Discovery Agent]
+    Discovery --> Ranking[Ranking Agent]
+    Ranking --> AnalysisB[Music Analysis Agent]
+    AnalysisB --> DeliveryB[Delivery Agent (Telegram)]
+    DeliveryB --> FeedbackB[User Feedback]
+    FeedbackB --> FeedbackAgentB[Feedback Agent]
+    FeedbackAgentB --> TasteModelB[Taste Modeling Agent]
 ```
 
 ### Modes of Operation
