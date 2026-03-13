@@ -23,19 +23,15 @@ DailyDig is an automated music discovery and delivery system that recommends tra
 flowchart TD
     Scheduler["Daily Scheduler 09:00 KST"] --> CheckQueue{"Queue Empty?"}
     CheckQueue -- No --> PickFromQueue["Pick from Queue"]
-    PickFromQueue --> AnalysisA["Music Analysis Agent"]
-    AnalysisA --> DeliveryA["Delivery Agent (Telegram)"]
-    DeliveryA --> FeedbackA["User Feedback"]
-    FeedbackA --> FeedbackAgentA["Feedback Agent"]
-    FeedbackAgentA --> TasteModelA["Taste Modeling Agent"]
+    PickFromQueue --> Analysis["Music Analysis Agent"]
+    Analysis --> Delivery["Delivery Agent (Telegram)"]
+    Delivery --> Feedback["User Feedback"]
+    Feedback --> FeedbackAgent["Feedback Agent"]
+    FeedbackAgent --> TasteModel["Taste Modeling Agent"]
     CheckQueue -- Yes --> Planner["Planner Agent"]
     Planner --> Discovery["Discovery Agent"]
     Discovery --> Ranking["Ranking Agent"]
-    Ranking --> AnalysisB["Music Analysis Agent"]
-    AnalysisB --> DeliveryB["Delivery Agent (Telegram)"]
-    DeliveryB --> FeedbackB["User Feedback"]
-    FeedbackB --> FeedbackAgentB["Feedback Agent"]
-    FeedbackAgentB --> TasteModelB["Taste Modeling Agent"]
+    Ranking --> Analysis["Music Analysis Agent"]
 ```
 
 ### Modes of Operation
