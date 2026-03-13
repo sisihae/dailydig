@@ -1,21 +1,3 @@
-# Plan 20 — Ranking Agent
-
-**Phase**: 5 – Auto-Discovery Pipeline  
-**Creates**: `backend/agents/ranking_agent.py`  
-**Depends on**: 19 (candidate tracks), 06 (repositories), 05 (TasteProfile)
-
----
-
-## Goal
-
-Score candidate tracks and select the best one for today. Queue remaining tracks for future delivery.
-
-## Steps
-
-### 1. Create `backend/agents/ranking_agent.py`
-
-```python
-import math
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,7 +96,7 @@ class RankingAgent:
     def _taste_score(candidate: dict, profile) -> float:
         """
         Cosine-like similarity between track features and user preferences.
-        Factors: energy distance, valence distance, genre overlap.
+        Factors: energy distance, genre overlap.
         """
         if profile is None:
             return 0.5  # neutral during cold start
@@ -196,28 +178,3 @@ class RankingAgent:
             added += 1
 
         return added
-```
-
-## Scoring Summary
-
-| Component       | Weight (default) | Logic                                             |
-| --------------- | ---------------- | ------------------------------------------------- |
-| taste_score     | 0.5              | Energy distance + genre preference overlap        |
-| novelty_score   | 0.3              | 1.0 (new artist), 0.5 (>30d ago), 0.0 (recent)    |
-| diversity_score | 0.2              | 1.0 if not in last 7 recs, linear decay otherwise |
-
-## Verification
-
-```python
-agent = RankingAgent()
-result = await agent.rank_and_select(session, candidates, strategy)
-print(result["selected"]["name"], result["score"])
-print(result["score_breakdown"])
-# Remaining candidates queued:
-count = await agent.queue_remaining(session, result["remaining"])
-print(f"Queued {count} tracks for future delivery")
-```
-
-## Output
-
-- `backend/agents/ranking_agent.py` — scoring, selection, and queueing

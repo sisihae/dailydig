@@ -59,11 +59,12 @@ Each plan is a self-contained, runnable implementation unit. Execute them in ord
 
 ## Phase 5: Auto-Discovery Pipeline
 
-| #   | Plan                                     | Creates                             | Depends on |
-| --- | ---------------------------------------- | ----------------------------------- | ---------- |
-| 18  | [Planner Agent](18-planner-agent.md)     | `backend/agents/planner_agent.py`   | 06         |
-| 19  | [Discovery Agent](19-discovery-agent.md) | `backend/agents/discovery_agent.py` | 18, 09, 06 |
-| 20  | [Ranking Agent](20-ranking-agent.md)     | `backend/agents/ranking_agent.py`   | 19, 06     |
+| #   | Plan                                                  | Creates                                           | Depends on     |
+| --- | ----------------------------------------------------- | ------------------------------------------------- | -------------- |
+| 18  | [Planner Agent](18-planner-agent.md)                  | `backend/agents/planner_agent.py`                 | 06             |
+| 19  | [Discovery Agent](19-discovery-agent.md)              | `backend/agents/discovery_agent.py`               | 18, 09, 06     |
+| 20  | [Ranking Agent](20-ranking-agent.md)                  | `backend/agents/ranking_agent.py`                 | 19, 06         |
+| 20b | [Auto-Discovery Wiring](20b-auto-discovery-wiring.md) | Modifies `recommendation.py` + `planner_agent.py` | 18, 19, 20, 14 |
 
 **Milestone**: Empty queue triggers Spotify recommendations → best track delivered, rest queued.
 
