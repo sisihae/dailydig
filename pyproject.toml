@@ -1,23 +1,3 @@
-# Plan 01 — Poetry Project Initialization
-
-**Phase**: 1 – Project Scaffolding & Infrastructure  
-**Creates**: `pyproject.toml`  
-**Depends on**: Nothing (first step)
-
----
-
-## Goal
-
-Initialize the Python project with Poetry, declaring all MVP dependencies.
-
-## Steps
-
-### 1. Create `pyproject.toml` directly
-
-> **Why not `poetry init`?** — `poetry init` is interactive and will hang in automation.
-> Create the file directly with all dependencies declared upfront.
-
-```toml
 [tool.poetry]
 name = "dailydig"
 description = "Daily Music Discovery Agent"
@@ -40,6 +20,7 @@ python-telegram-bot = ">=21.0"
 apscheduler = ">=3.10"
 pydantic-settings = ">=2.0"
 httpx = ">=0.28"
+greenlet = "^3.3.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"
@@ -47,7 +28,7 @@ pytest-asyncio = ">=0.25"
 pytest-cov = "*"
 ruff = "*"
 mypy = "*"
-aiosqlite = "*"  # for test DB (in-memory SQLite)
+aiosqlite = "*"
 
 [tool.ruff]
 target-version = "py311"
@@ -64,21 +45,3 @@ strict = true
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-```
-
-### 2. Install dependencies
-
-```bash
-poetry install
-```
-
-## Verification
-
-```bash
-poetry run python -c "import fastapi, sqlalchemy, langgraph; print('OK')"
-```
-
-## Output
-
-- `pyproject.toml` with all dependencies declared
-- `poetry.lock` generated
