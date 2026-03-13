@@ -55,7 +55,11 @@ def get_spotify_client() -> spotipy.Spotify:
     return spotipy.Spotify(auth_manager=auth_manager)
 ```
 
-### 3. Create OAuth API routes
+### 3. Create `backend/routes/__init__.py`
+
+Empty file.
+
+### 4. Create OAuth API routes
 
 File: `backend/routes/auth.py`
 
@@ -91,7 +95,7 @@ async def spotify_callback(code: str):
     }
 ```
 
-### 4. Register router in `backend/app.py`
+### 5. Register router in `backend/app.py`
 
 ```python
 from backend.routes.auth import router as auth_router

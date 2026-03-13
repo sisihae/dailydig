@@ -1,23 +1,6 @@
-# Plan 09 — Spotify Service
-
-**Phase**: 2 – Spotify Integration + Playlist Import  
-**Creates**: `backend/services/spotify_service.py`  
-**Depends on**: 08 (spotify_auth with `get_spotify_client`)
-
----
-
-## Goal
-
-Wrap all Spotify Web API interactions into a service class with Redis caching.
-
-## Steps
-
-### 1. Create `backend/services/spotify_service.py`
-
-```python
 import asyncio
-import re
 import json
+import re
 
 import redis.asyncio as aioredis
 import spotipy
@@ -27,7 +10,7 @@ from backend.services.spotify_auth import get_spotify_client
 
 
 class SpotifyService:
-    def __init__(self):
+    def __init__(self) -> None:
         self._redis: aioredis.Redis | None = None
 
     async def _get_redis(self) -> aioredis.Redis:
@@ -42,8 +25,8 @@ class SpotifyService:
     def parse_playlist_id(url_or_id: str) -> str:
         """Extract playlist ID from a Spotify URL or URI."""
         patterns = [
-            r"playlist/([a-zA-Z0-9]+)",      # URL format
-            r"playlist:([a-zA-Z0-9]+)",        # URI format
+            r"playlist/([a-zA-Z0-9]+)",  # URL format
+            r"playlist:([a-zA-Z0-9]+)",  # URI format
         ]
         for pattern in patterns:
             match = re.search(pattern, url_or_id)
@@ -60,21 +43,27 @@ class SpotifyService:
         Returns list of simplified track dicts.
         """
         sp = self._get_client()
-        tracks = []
+        tracks: list[dict] = []
         results = await asyncio.to_thread(sp.playlist_tracks, playlist_id)
 
         while results:
             for item in results["items"]:
                 track = item.get("track")
                 if track and track.get("id"):
-                    tracks.append({
-                        "spotify_id": track["id"],
-                        "name": track["name"],
-                        "artist": ", ".join(a["name"] for a in track["artists"]),
-                        "artist_id": track["artists"][0]["id"] if track["artists"] else None,
-                        "album": track.get("album", {}).get("name"),
-                    })
-            results = await asyncio.to_thread(sp.next, results) if results.get("next") else None
+                    tracks.append(
+                        {
+                            "spotify_id": track["id"],
+                            "name": track["name"],
+                            "artist": ", ".join(a["name"] for a in track["artists"]),
+                            "artist_id": (
+                                track["artists"][0]["id"] if track["artists"] else None
+                            ),
+                            "album": track.get("album", {}).get("name"),
+                        }
+                    )
+            results = (
+                await asyncio.to_thread(sp.next, results) if results.get("next") else None
+            )
 
         return tracks
 
@@ -84,8 +73,8 @@ class SpotifyService:
         Returns {spotify_id: {energy, valence, tempo}} with Redis caching (TTL 24h).
         """
         redis = await self._get_redis()
-        result = {}
-        uncached_ids = []
+        result: dict[str, dict] = {}
+        uncached_ids: list[str] = []
 
         # Check cache first
         for tid in track_ids:
@@ -129,7 +118,9 @@ class SpotifyService:
         Redis cached for 1 hour.
         """
         redis = await self._get_redis()
-        cache_key = f"recs:{':'.join(seed_artists or [])}:{':'.join(seed_genres or [])}:{limit}"
+        cache_key = (
+            f"recs:{':'.join(seed_artists or [])}:{':'.join(seed_genres or [])}:{limit}"
+        )
         cached = await redis.get(cache_key)
         if cached:
             return json.loads(cached)
@@ -142,15 +133,17 @@ class SpotifyService:
             limit=limit,
         )
 
-        tracks = []
+        tracks: list[dict] = []
         for track in results.get("tracks", []):
-            tracks.append({
-                "spotify_id": track["id"],
-                "name": track["name"],
-                "artist": ", ".join(a["name"] for a in track["artists"]),
-                "artist_id": track["artists"][0]["id"] if track["artists"] else None,
-                "album": track.get("album", {}).get("name"),
-            })
+            tracks.append(
+                {
+                    "spotify_id": track["id"],
+                    "name": track["name"],
+                    "artist": ", ".join(a["name"] for a in track["artists"]),
+                    "artist_id": track["artists"][0]["id"] if track["artists"] else None,
+                    "album": track.get("album", {}).get("name"),
+                }
+            )
 
         await redis.set(cache_key, json.dumps(tracks), ex=3600)  # 1 hour
 
@@ -161,24 +154,3 @@ class SpotifyService:
         sp = self._get_client()
         artist = await asyncio.to_thread(sp.artist, artist_id)
         return artist.get("genres", [])
-```
-
-## Key Decisions
-
-- Redis caching: audio features (24h), recommendations (1h).
-- Pagination handling for large playlists.
-- Batch audio features in groups of 100 (Spotify limit).
-- `parse_playlist_id` handles URL, URI, and raw ID formats. Raises `ValueError` for invalid inputs.
-- All `spotipy` calls wrapped in `asyncio.to_thread()` to avoid blocking the event loop.
-
-## Verification
-
-```python
-service = SpotifyService()
-tracks = await service.get_playlist_tracks("37i9dQZF1DXcBWIGoYBM5M")
-print(len(tracks), tracks[0]["name"])
-```
-
-## Output
-
-- `backend/services/spotify_service.py` — Full Spotify API wrapper with caching
