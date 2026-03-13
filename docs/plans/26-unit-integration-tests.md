@@ -59,21 +59,22 @@ class TestQueueOperations:
 ```python
 import pytest
 from backend.agents.ranking_agent import RankingAgent
+from backend.models import TasteProfile
 
 
 class TestRankingAgent:
-    def test_taste_score_neutral_without_profile(self):
+    async def test_taste_score_neutral_without_profile(self):
         """No profile → 0.5 neutral score."""
         score = RankingAgent._taste_score({"energy": 0.5, "genre": "jazz"}, None)
         assert score == 0.5
 
-    def test_taste_score_high_for_matching_genre(self, sample_taste_profile):
+    async def test_taste_score_high_for_matching_genre(self, sample_taste_profile):
         """High genre preference → higher taste score."""
         candidate = {"energy": 0.6, "genre": "neo soul"}
         score = RankingAgent._taste_score(candidate, sample_taste_profile)
         assert score > 0.5
 
-    def test_novelty_score_new_artist(self):
+    async def test_novelty_score_new_artist(self):
         """Never-recommended artist → novelty 1.0."""
         score = RankingAgent._novelty_score(
             {"artist": "New Artist"},
@@ -82,7 +83,7 @@ class TestRankingAgent:
         )
         assert score == 1.0
 
-    def test_novelty_score_recent_artist(self):
+    async def test_novelty_score_recent_artist(self):
         """Recently recommended artist → novelty 0.0."""
         score = RankingAgent._novelty_score(
             {"artist": "Old Artist"},
@@ -91,7 +92,7 @@ class TestRankingAgent:
         )
         assert score == 0.0
 
-    def test_diversity_score_fresh_artist(self):
+    async def test_diversity_score_fresh_artist(self):
         """Artist not in last 7 recs → diversity 1.0."""
         score = RankingAgent._diversity_score(
             {"artist": "Fresh Artist"},
@@ -111,28 +112,37 @@ from backend.database import repositories as repo
 class TestTasteUpdate:
     async def test_cold_start_creates_profile(self, db_session, sample_track):
         """First feedback creates a new TasteProfile."""
-        # Verify no profile exists
         profile = await repo.get_taste_profile(db_session)
         assert profile is None
 
-        # Simulate like feedback (will create profile via taste_model_agent)
-        # Direct test of update logic:
         agent = TasteModelAgent()
-        # Note: agent uses its own session; for unit test, test the logic directly
-        # This would need mocking of async_session
+        await agent.update_from_feedback(db_session, "like", sample_track.id)
+
+        profile = await repo.get_taste_profile(db_session)
+        assert profile is not None
+        assert sample_track.genre in profile.genre_preferences
 
     async def test_like_increases_genre_preference(self, db_session, sample_taste_profile, sample_track):
         """Liking a 'neo soul' track should increase neo soul preference."""
         old_pref = sample_taste_profile.genre_preferences.get("neo soul", 0.5)
-        # After like: should be old_pref + 0.05
-        expected = min(1.0, old_pref + 0.05)
-        assert expected == pytest.approx(0.75, abs=0.01)
 
-    async def test_dislike_decreases_genre_preference(self, db_session, sample_taste_profile):
+        agent = TasteModelAgent()
+        await agent.update_from_feedback(db_session, "like", sample_track.id)
+
+        profile = await repo.get_taste_profile(db_session)
+        new_pref = profile.genre_preferences.get("neo soul", 0.5)
+        assert new_pref > old_pref
+
+    async def test_dislike_decreases_genre_preference(self, db_session, sample_taste_profile, sample_track):
         """Disliking should decrease genre preference."""
-        old_jazz = sample_taste_profile.genre_preferences.get("jazz", 0.5)
-        expected = max(0.0, old_jazz - 0.05)
-        assert expected == pytest.approx(0.55, abs=0.01)
+        old_pref = sample_taste_profile.genre_preferences.get("neo soul", 0.5)
+
+        agent = TasteModelAgent()
+        await agent.update_from_feedback(db_session, "dislike", sample_track.id)
+
+        profile = await repo.get_taste_profile(db_session)
+        new_pref = profile.genre_preferences.get("neo soul", 0.5)
+        assert new_pref < old_pref
 
     async def test_preferences_clamped(self):
         """Genre preferences should be clamped to [0.0, 1.0]."""
@@ -174,37 +184,98 @@ class TestDiscoveryAgent:
 ```python
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
+from contextlib import asynccontextmanager
+
 from backend.graph.workflow import build_workflow
 
 
 class TestWorkflow:
     async def test_queue_mode_workflow(self, db_session, sample_track, sample_queue_entry):
         """With tracks in queue, workflow should pick from queue and deliver."""
-        workflow = build_workflow()
 
-        with patch("backend.graph.workflow.async_session") as mock_session_ctx, \
-             patch("backend.graph.workflow.DeliveryAgent") as mock_delivery, \
-             patch("backend.graph.workflow.AnalysisAgent") as mock_analysis:
+        @asynccontextmanager
+        async def mock_session_ctx():
+            yield db_session
 
-            # Mock session context
-            mock_session_ctx.return_value.__aenter__ = AsyncMock(return_value=db_session)
-            mock_session_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+        with patch("backend.graph.workflow.async_session", mock_session_ctx), \
+             patch("backend.graph.workflow.SpotifyService"), \
+             patch("backend.graph.workflow.AnalysisAgent") as mock_analysis, \
+             patch("backend.graph.workflow.DeliveryAgent") as mock_delivery:
 
-            # Mock analysis
             analysis_inst = MagicMock()
             analysis_inst.generate_explanation = AsyncMock(return_value="Great track")
             mock_analysis.return_value = analysis_inst
 
-            # Mock delivery
             delivery_inst = MagicMock()
             delivery_inst.deliver_track = AsyncMock(
                 return_value={"message_id": 1, "delivery_status": "delivered"}
             )
             mock_delivery.return_value = delivery_inst
 
+            workflow = build_workflow()
             result = await workflow.ainvoke({})
 
             assert result.get("queue_mode") is True
+            assert result.get("delivery_status") == "delivered"
+
+    async def test_auto_discovery_mode_workflow(self, db_session):
+        """With empty queue, workflow should enter auto-discovery mode."""
+
+        @asynccontextmanager
+        async def mock_session_ctx():
+            yield db_session
+
+        with patch("backend.graph.workflow.async_session", mock_session_ctx), \
+             patch("backend.graph.workflow.SpotifyService"), \
+             patch("backend.graph.workflow.PlannerAgent") as mock_planner, \
+             patch("backend.graph.workflow.DiscoveryAgent") as mock_discovery, \
+             patch("backend.graph.workflow.RankingAgent") as mock_ranking, \
+             patch("backend.graph.workflow.AnalysisAgent") as mock_analysis, \
+             patch("backend.graph.workflow.DeliveryAgent") as mock_delivery:
+
+            planner_inst = MagicMock()
+            planner_inst.create_strategy = AsyncMock(return_value={
+                "seed_artists": ["art_001"],
+                "candidate_genres": ["jazz"],
+                "taste_similarity_weight": 0.5,
+                "novelty_weight": 0.3,
+                "diversity_weight": 0.2,
+            })
+            mock_planner.return_value = planner_inst
+
+            discovery_inst = MagicMock()
+            discovery_inst.fetch_candidates = AsyncMock(return_value=[
+                {"spotify_id": "new_sp_001", "name": "New Track", "artist": "New Artist",
+                 "album": "New Album", "genre": "jazz", "energy": 0.6, "valence": 0.5, "tempo": 120},
+            ])
+            mock_discovery.return_value = discovery_inst
+
+            ranking_inst = MagicMock()
+            ranking_inst.rank_and_select = AsyncMock(return_value={
+                "selected": {"spotify_id": "new_sp_001", "name": "New Track", "artist": "New Artist",
+                             "album": "New Album", "genre": "jazz", "energy": 0.6, "valence": 0.5, "tempo": 120},
+                "remaining": [],
+                "score": 0.85,
+                "score_breakdown": {"taste": 0.7, "novelty": 1.0, "diversity": 1.0},
+            })
+            ranking_inst.queue_remaining = AsyncMock()
+            mock_ranking.return_value = ranking_inst
+
+            analysis_inst = MagicMock()
+            analysis_inst.generate_explanation = AsyncMock(return_value="A jazzy discovery")
+            mock_analysis.return_value = analysis_inst
+
+            delivery_inst = MagicMock()
+            delivery_inst.deliver_track = AsyncMock(
+                return_value={"message_id": 2, "delivery_status": "delivered"}
+            )
+            delivery_inst.send_auto_discovery_notice = AsyncMock()
+            mock_delivery.return_value = delivery_inst
+
+            workflow = build_workflow()
+            result = await workflow.ainvoke({})
+
+            assert result.get("queue_mode") is False
             assert result.get("delivery_status") == "delivered"
 ```
 
@@ -216,7 +287,7 @@ class TestWorkflow:
 | `test_ranking.py`      | 5 tests  | Taste/novelty/diversity scoring, edge cases |
 | `test_taste_update.py` | 4 tests  | Cold start, like/dislike effects, clamping  |
 | `test_discovery.py`    | 1+ tests | Dedup filtering                             |
-| `test_workflow.py`     | 1+ tests | End-to-end queue mode with mocks            |
+| `test_workflow.py`     | 2 tests  | Queue mode + auto-discovery mode with mocks |
 
 ## Verification
 

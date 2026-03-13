@@ -1,24 +1,3 @@
-# Plan 25 — Test Infrastructure (conftest + fixtures)
-
-**Phase**: 8 – Testing  
-**Creates**: `tests/conftest.py`, `tests/__init__.py`  
-**Depends on**: 04 (db.py), 05 (models)
-
----
-
-## Goal
-
-Set up test infrastructure: in-memory SQLite async DB, mock fixtures for Spotify/Claude/Telegram.
-
-## Steps
-
-### 1. Create `tests/__init__.py`
-
-Empty file.
-
-### 2. Create `tests/conftest.py`
-
-```python
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -29,6 +8,7 @@ from backend.models import Track, DigQueue, TasteProfile, Feedback, Recommendati
 
 
 # --- Database fixtures ---
+
 
 @pytest_asyncio.fixture
 async def db_engine():
@@ -49,6 +29,7 @@ async def db_session(db_engine):
 
 
 # --- Sample data fixtures ---
+
 
 @pytest_asyncio.fixture
 async def sample_track(db_session):
@@ -99,6 +80,7 @@ async def sample_taste_profile(db_session):
 
 # --- Mock fixtures ---
 
+
 @pytest.fixture
 def mock_spotify():
     """Mock SpotifyService."""
@@ -141,16 +123,3 @@ def mock_telegram():
         bot.send_message = AsyncMock(return_value=message)
         mock.return_value = bot
         yield bot
-```
-
-## Key Decisions
-
-- `aiosqlite` for in-memory test DB (no Docker needed for tests).
-- Fixtures provide pre-populated sample data for common test scenarios.
-- All external services (Spotify, Claude, Telegram) mocked by default.
-- `pytest_asyncio` with `auto` mode handles async test functions.
-
-## Output
-
-- `tests/__init__.py`
-- `tests/conftest.py` — all test fixtures
