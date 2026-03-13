@@ -10,6 +10,7 @@ from backend.routes.feedback import router as feedback_router
 from backend.routes.playlist import router as playlist_router
 from backend.routes.recommendation import router as recommendation_router
 from backend.routes.taste import router as taste_router
+from backend.scheduler.daily_job import create_scheduler
 from backend.services.telegram_handler import create_telegram_app
 
 logger = logging.getLogger(__name__)
@@ -27,15 +28,21 @@ async def lifespan(app: FastAPI):
     await telegram_app.updater.start_polling(drop_pending_updates=True)
     logger.info("Telegram polling started")
 
-    # Scheduler will be registered here in Phase 6
+    # Start scheduler
+    scheduler = create_scheduler()
+    scheduler.start()
+    logger.info("Scheduler started")
+
     yield
 
     # Shutdown
+    scheduler.shutdown()
+    logger.info("Scheduler stopped")
+
     await telegram_app.updater.stop()
     await telegram_app.stop()
     await telegram_app.shutdown()
     logger.info("Telegram polling stopped")
-    # Scheduler shutdown will be added in Phase 6
 
 
 app = FastAPI(

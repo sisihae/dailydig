@@ -1,56 +1,3 @@
-# Plan 21 — LangGraph Workflow (Dual-Mode StateGraph)
-
-**Phase**: 6 – LangGraph Orchestration & Scheduler  
-**Creates**: `backend/graph/state.py`, `backend/graph/workflow.py`  
-**Depends on**: All agents (12, 13, 18, 19, 20), 10 (queue service)
-
----
-
-## Goal
-
-Define the LangGraph StateGraph that orchestrates the dual-mode pipeline: queue delivery vs auto-discovery.
-
-## Steps
-
-### 1. Create `backend/graph/__init__.py`
-
-Empty file.
-
-### 2. Create `backend/graph/state.py`
-
-```python
-from typing import TypedDict
-
-
-class AgentState(TypedDict, total=False):
-    # Taste & mode
-    taste_profile: dict | None          # None during cold start
-    queue_mode: bool                     # True = queue delivery, False = auto-discovery
-
-    # Queue mode fields
-    queue_entry_id: int | None
-    selected_track_id: int | None
-
-    # Auto-discovery fields
-    planner_strategy: dict | None
-    candidate_tracks: list[dict]
-
-    # Shared fields
-    selected_track: dict | None          # Track dict for analysis/delivery
-    score: float | None
-    score_breakdown: dict | None
-    explanation: str | None
-    delivery_status: str | None
-    error: str | None
-```
-
-### 3. Create `backend/graph/workflow.py`
-
-**Note on LangGraph version**: We use LangGraph 1.x API (`START`/`END` from `langgraph.graph`, `add_edge(START, ...)` instead of `set_entry_point`). Nodes return only changed keys (partial update) — LangGraph merges them into state automatically.
-
-**Note on cold start**: `check_queue_node` does NOT abort when taste profile is missing. `PlannerAgent.create_strategy()` already handles sparse/missing profiles by falling back to genres from recent recommendations.
-
-```python
 import logging
 
 from langgraph.graph import StateGraph, START, END
@@ -70,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 # --- Node functions ---
+
 
 async def check_queue_node(state: AgentState) -> dict:
     """Check if queue has pending tracks. Set queue_mode accordingly."""
@@ -166,7 +114,7 @@ async def ranking_node(state: AgentState) -> dict:
         if not selected:
             return {"error": "Ranking produced no selection"}
 
-        # Create track in DB and queue remaining
+        # Create track in DB if not exists
         existing = await repo.get_track_by_spotify_id(session, selected["spotify_id"])
         if existing:
             track_id = existing.id
@@ -259,6 +207,7 @@ async def delivery_node(state: AgentState) -> dict:
 
 # --- Routing ---
 
+
 def route_by_queue(state: AgentState) -> str:
     """Route based on queue state."""
     if state.get("error"):
@@ -269,6 +218,7 @@ def route_by_queue(state: AgentState) -> str:
 
 
 # --- Build graph ---
+
 
 def build_workflow():
     """Build and compile the dual-mode workflow graph."""
@@ -298,33 +248,3 @@ def build_workflow():
     graph.add_edge("delivery", END)
 
     return graph.compile()
-```
-
-## Graph Flow
-
-```
-check_queue
-  ├─ queue_mode=True  → pick_from_queue → analysis → delivery → END
-  ├─ queue_mode=False → planner → discovery → ranking → analysis → delivery → END
-  └─ error            → END
-```
-
-## Key Decisions
-
-- Each node opens its own `async_session()` — keeps transactions short.
-- Errors halt the pipeline via `error` key in state.
-- Feedback/taste update NOT part of this graph (runs async via Telegram callback).
-- `build_workflow()` returns a compiled graph ready to `.ainvoke()`.
-
-## Verification
-
-```python
-workflow = build_workflow()
-result = await workflow.ainvoke({})
-print(result["delivery_status"])  # "delivered"
-```
-
-## Output
-
-- `backend/graph/state.py` — `AgentState` TypedDict
-- `backend/graph/workflow.py` — full dual-mode StateGraph
